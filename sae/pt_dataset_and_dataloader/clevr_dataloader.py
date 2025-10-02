@@ -11,8 +11,8 @@ Handles:
 from torch.utils.data import DataLoader
 from pathlib import Path
 from typing import Tuple
-from clevr_vocabulary import CLEVRVocabulary
-from clevr_dataset import CLEVRLiteDataset
+from sae.pt_dataset_and_dataloader.clevr_vocabulary import CLEVRVocabulary
+from sae.pt_dataset_and_dataloader.clevr_dataset import CLEVRLiteDataset
 
 
 def create_dataloaders(

@@ -5,7 +5,7 @@ from PIL import Image
 import json
 from pathlib import Path
 from typing import Dict, Optional
-from clevr_vocabulary import CLEVRVocabulary
+from sae.pt_dataset_and_dataloader.clevr_vocabulary import CLEVRVocabulary
 
 class CLEVRLiteDataset(Dataset):
     """PyTorch Dataset for CLEVR-Lite"""
