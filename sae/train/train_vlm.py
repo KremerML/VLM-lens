@@ -70,17 +70,34 @@ class VLMTrainer:
         )
     
     def _get_targets(self, batch: Dict) -> Dict[str, torch.Tensor]:
-        """Extract targets from batch"""
-        # For attributes, we need to create dummy targets from scene objects
-        # In a real scenario, you'd extract these from scene_objects
-        # For now, use answer_id as a proxy (you should precompute these)
-        B = batch['answer_id'].size(0)
+        B = len(batch['scene_objects'])  # Use len() since it's a list now
+        
+        colors = []
+        shapes = []
+        sizes = []
+        
+        color_map = {'red': 0, 'blue': 1, 'green': 2, 'yellow': 3, 'purple': 4, 'cyan': 5}
+        shape_map = {'cube': 0, 'sphere': 1, 'cylinder': 2}
+        size_map = {'small': 0, 'large': 1}
+        
+        for i in range(B):
+            scene_objs = batch['scene_objects'][i]  # List of dicts
+            
+            if len(scene_objs) > 0:
+                first_obj = scene_objs[0]
+                colors.append(color_map.get(first_obj['color'], 0))
+                shapes.append(shape_map.get(first_obj['shape'], 0))
+                sizes.append(size_map.get(first_obj['size'], 0))
+            else:
+                colors.append(0)
+                shapes.append(0)
+                sizes.append(0)
         
         return {
             'answer_id': batch['answer_id'].to(self.device),
-            'colors': torch.randint(0, 6, (B,)).to(self.device),  # TODO: extract from scene
-            'shapes': torch.randint(0, 3, (B,)).to(self.device),  # TODO: extract from scene
-            'sizes': torch.randint(0, 2, (B,)).to(self.device),   # TODO: extract from scene
+            'colors': torch.tensor(colors, dtype=torch.long).to(self.device),
+            'shapes': torch.tensor(shapes, dtype=torch.long).to(self.device),
+            'sizes': torch.tensor(sizes, dtype=torch.long).to(self.device),
         }
     
     def train_step(self, batch: Dict, loss_weights: Dict[str, float]) -> Dict[str, float]:
@@ -119,6 +136,13 @@ class VLMTrainer:
         loss_dict['lr'] = self.scheduler.get_last_lr()[0]
         
         self.global_step += 1
+
+        if self.global_step % 100 == 0:
+            print(f"\nDEBUG at step {self.global_step}:")
+            print(f"  qa_logits: {outputs['qa_logits'].shape}, sample: {outputs['qa_logits'][0, :5]}")
+            print(f"  targets['answer_id']: {targets['answer_id'].shape}, sample: {targets['answer_id'][:5]}")
+            print(f"  attr color logits: {outputs['attr_logits']['color'][0]}")
+            print(f"  attr color target: {targets['colors'][:5]}")
         
         return loss_dict
     

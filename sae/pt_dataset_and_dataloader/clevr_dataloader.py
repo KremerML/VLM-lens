@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Tuple
 from sae.pt_dataset_and_dataloader.clevr_vocabulary import CLEVRVocabulary
 from sae.pt_dataset_and_dataloader.clevr_dataset import CLEVRLiteDataset
+from sae.pt_dataset_and_dataloader.collate_fn import collate_clevr
 
 
 def create_dataloaders(
@@ -59,6 +60,7 @@ def create_dataloaders(
         num_workers=num_workers,
         pin_memory=True,
         drop_last=True,  # for stable batch stats
+        collate_fn=collate_clevr,
     )
     
     val_loader = DataLoader(
@@ -67,6 +69,7 @@ def create_dataloaders(
         shuffle=False,
         num_workers=num_workers,
         pin_memory=True,
+        collate_fn=collate_clevr,
     )
     
     print(f"\n✓ DataLoaders created:")

@@ -109,4 +109,5 @@ class CLEVRLiteDataset(Dataset):
             'answer_text': item['answer'],
             'is_held_out': item['is_held_out_combo'],
             'scene_id': item['scene_id'],
+            'scene_objects': item['scene_objects']
         }
