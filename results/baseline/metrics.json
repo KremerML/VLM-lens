@@ -1,0 +1,30 @@
+{
+  "overall_accuracy": 0.5678391959798995,
+  "total_questions": 398,
+  "correct_predictions": 226,
+  "by_question_type": {
+    "query_color_unambiguous": {
+      "accuracy": 0.8439716312056738,
+      "correct": 119,
+      "total": 141
+    },
+    "query_shape_unambiguous": {
+      "accuracy": 0.5721925133689839,
+      "correct": 107,
+      "total": 187
+    },
+    "query_color_negation": {
+      "accuracy": 0.0,
+      "correct": 0,
+      "total": 70
+    }
+  },
+  "held_out_combo": {
+    "accuracy": 0.5675675675675675,
+    "total": 148
+  },
+  "seen_combo": {
+    "accuracy": 0.568,
+    "total": 250
+  }
+}
