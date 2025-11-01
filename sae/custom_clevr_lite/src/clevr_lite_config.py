@@ -4,7 +4,7 @@ class CLEVRLiteConfig:
     """Dataset generation configuration"""
     # Colors and shapes
     COLORS = ['red', 'blue', 'green', 'yellow', 'purple', 'cyan']
-    SHAPES = ['cube', 'sphere', 'cylinder']
+    SHAPES = ['cube', 'sphere', 'triangle']
     SIZES = ['small', 'large']
     
     # Color RGB values (bright, saturated)
@@ -22,33 +22,22 @@ class CLEVRLiteConfig:
     CANVAS_SIZE = 1.0  # normalized coordinates
     
     # Object settings
-    MIN_OBJECTS = 3
-    MAX_OBJECTS = 5
+    MIN_OBJECTS = 2
+    MAX_OBJECTS = 4
     SMALL_SIZE = 20
     LARGE_SIZE = 35
-    MIN_DISTANCE = 0.15  # minimum distance between object centers
+    MIN_DISTANCE = 0.25  # minimum distance between object centers
     
     # Question templates
     TEMPLATES = {
-        'count': [
-            "How many {color} objects are there?",
-            "How many {shape}s are there?",
-            "How many objects are there?",
-        ],
-        'exist': [
-            "Is there a {color} {shape}?",
-            "Are there any {color} objects?",
-        ],
-        'query_color': [
-            "What color is the {shape} on the left?",
-            "What is the color of the large {shape}?",
-        ],
-        'query_shape': [
-            "What shape is the {color} object?",
-            "What is the shape of the leftmost object?",
-        ],
-        'compare_distance': [
-            "Which {color} object is closest to the {color2} {shape2}?",
-            "Is the {color} {shape} closer to the {color2} object than the {color3} {shape3}?",
-        ],
-    }
+    # ONLY use these for circuit discovery
+    'query_color_unambiguous': [
+        "What color is the {shape}?",  # only when exactly 1 of that shape
+    ],
+    'query_shape_unambiguous': [
+        "What shape is the {color} object?",  # only when exactly 1 of that color
+    ],
+    'query_color_negation': [
+        "What color is the object that is NOT {distractor_color}?",
+    ],
+}

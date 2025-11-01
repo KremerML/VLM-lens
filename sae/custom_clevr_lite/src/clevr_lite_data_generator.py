@@ -15,10 +15,10 @@ from pathlib import Path
 from typing import List
 import json
 from dataclasses import asdict
-from tqdm import tqdm # type: ignore
+from tqdm import tqdm
 import random
-from clevr_lite_config import CLEVRLiteConfig
-from scene_qa_datamodel import Object, Scene, Question
+from src.clevr_lite_config import CLEVRLiteConfig
+from src.scene_qa_datamodel import Object, Scene, Question
 
 class CLEVRLiteGenerator:
     """Generate CLEVR-Lite dataset with compositional splits"""
@@ -26,8 +26,8 @@ class CLEVRLiteGenerator:
     def __init__(
         self,
         output_dir: str,
-        num_train: int = 200_000,
-        num_val: int = 22_000,
+        num_train: int = 100,
+        num_val: int = 20,
         held_out_ratio: float = 0.5,
         near_tie_ratio: float = 0.3,
         texture_ratio: float = 0.0,  # start without textures
@@ -69,12 +69,23 @@ class CLEVRLiteGenerator:
         print(f"Held-out combinations: {len(self.held_out_combos)}")
         print(f"Examples held-out: {list(self.held_out_combos)[:3]}")
         
-    def _generate_scene(self, allow_held_out: bool = False) -> Scene:
-        """Generate a single scene with 3-5 objects"""
+    def _generate_scene(self, allow_held_out: bool = False, force_unique_attribute: bool = True) -> Scene:
+        """
+        Generate a single scene with 3-5 objects.
+        
+        Args:
+            allow_held_out: If True, allow held-out color x shape combinations
+            force_unique_attribute: If True, ensure at least one object has a unique shape or color
+                                    (enables unambiguous attribute queries)
+        """
         n_objects = self.rng.randint(self.config.MIN_OBJECTS, self.config.MAX_OBJECTS + 1)
         
         objects = []
         positions = []
+        
+        # Track used attributes for uniqueness constraint
+        used_shapes = []
+        used_colors = []
         
         for obj_id in range(n_objects):
             # Sample color and shape (respecting compositional split)
@@ -128,6 +139,46 @@ class CLEVRLiteGenerator:
                 pixel_box=(px - obj_size, py - obj_size, px + obj_size, py + obj_size)
             )
             objects.append(obj)
+            used_shapes.append(shape)
+            used_colors.append(color)
+        
+        # Post-process: Ensure at least one unique attribute for unambiguous questions
+        if force_unique_attribute and n_objects >= 2:
+            shape_counts = {s: used_shapes.count(s) for s in set(used_shapes)}
+            color_counts = {c: used_colors.count(c) for c in set(used_colors)}
+            
+            has_unique_shape = any(count == 1 for count in shape_counts.values())
+            has_unique_color = any(count == 1 for count in color_counts.values())
+            
+            # If no unique attributes, force one by modifying the last object
+            if not has_unique_shape and not has_unique_color:
+                # Strategy: Change last object's attribute to create uniqueness
+                last_obj = objects[-1]
+                
+                # Try to make shape unique
+                available_shapes = [s for s in self.config.SHAPES if s not in used_shapes[:-1]]
+                if available_shapes:
+                    new_shape = self.rng.choice(available_shapes)
+                    # Check if this combo is allowed
+                    is_held_out = (last_obj.color, new_shape) in self.held_out_combos
+                    if allow_held_out or not is_held_out:
+                        last_obj.shape = new_shape
+                    else:
+                        # Try to make color unique instead
+                        available_colors = [c for c in self.config.COLORS if c not in used_colors[:-1]]
+                        if available_colors:
+                            new_color = self.rng.choice(available_colors)
+                            is_held_out = (new_color, last_obj.shape) in self.held_out_combos
+                            if allow_held_out or not is_held_out:
+                                last_obj.color = new_color
+                else:
+                    # Try to make color unique
+                    available_colors = [c for c in self.config.COLORS if c not in used_colors[:-1]]
+                    if available_colors:
+                        new_color = self.rng.choice(available_colors)
+                        is_held_out = (new_color, last_obj.shape) in self.held_out_combos
+                        if allow_held_out or not is_held_out:
+                            last_obj.color = new_color
         
         return Scene(objects=objects, image_path='', scene_id=-1)
     
@@ -144,82 +195,88 @@ class CLEVRLiteGenerator:
                 draw.rectangle([x1, y1, x2, y2], fill=color, outline=(0, 0, 0), width=2)
             elif obj.shape == 'sphere':
                 draw.ellipse([x1, y1, x2, y2], fill=color, outline=(0, 0, 0), width=2)
-            elif obj.shape == 'cylinder':
-                # Draw as rounded rectangle
-                draw.rounded_rectangle([x1, y1, x2, y2], radius=8, fill=color, outline=(0, 0, 0), width=2)
+            elif obj.shape == 'triangle':
+                # Draw as triangle
+                draw.polygon([x1, y2, x2, y2, (x1 + x2) // 2, y1], fill=color, outline=(0, 0, 0), width=2)
         
         img.save(output_path)
     
-    def _generate_questions(self, scene: Scene, scene_id: int, split: str) -> List[Question]:
-        """Generate questions for a scene"""
+    def _generate_questions(self, scene: Scene, scene_id: int) -> List[Question]:
+        """Generate ONLY unambiguous attribute queries for circuit discovery"""
         questions = []
         
-        # Count questions
-        q = random.choice(self.config.TEMPLATES['count'])
-        if '{color}' in q:
-            color = random.choice([obj.color for obj in scene.objects])
-            answer = str(sum(1 for obj in scene.objects if obj.color == color))
-            question_text = q.format(color=color)
-        elif '{shape}' in q:
-            shape = random.choice([obj.shape for obj in scene.objects])
-            answer = str(sum(1 for obj in scene.objects if obj.shape == shape))
-            question_text = q.format(shape=shape)
-        else:
-            answer = str(len(scene.objects))
-            question_text = q
+        # Count objects by shape and color
+        shape_counts = {s: sum(1 for obj in scene.objects if obj.shape == s) 
+                        for s in self.config.SHAPES}
+        color_counts = {c: sum(1 for obj in scene.objects if obj.color == c) 
+                        for c in self.config.COLORS}
         
-        is_held_out = any((obj.color, obj.shape) in self.held_out_combos for obj in scene.objects)
+        # Query color: "What color is the {shape}?" - only when exactly 1 of that shape
+        for shape, count in shape_counts.items():
+            if count == 1:
+                target_obj = next(obj for obj in scene.objects if obj.shape == shape)
+                question_text = f"What color is the {shape}?"
+                
+                questions.append(Question(
+                    scene_id=scene_id,
+                    question=question_text,
+                    answer=target_obj.color,
+                    question_type='query_color_unambiguous',
+                    image_path=scene.image_path,
+                    scene_objects=[asdict(obj) for obj in scene.objects],
+                    template_id=0,
+                    is_held_out_combo=(target_obj.color, target_obj.shape) in self.held_out_combos,
+                ))
         
-        questions.append(Question(
-            scene_id=scene_id,
-            question=question_text,
-            answer=answer,
-            question_type='count',
-            image_path=scene.image_path,
-            scene_objects=[asdict(obj) for obj in scene.objects],
-            template_id=0,
-            is_held_out_combo=is_held_out,
-        ))
+        # Query shape: "What shape is the {color} object?" - only when exactly 1 of that color
+        for color, count in color_counts.items():
+            if count == 1:
+                target_obj = next(obj for obj in scene.objects if obj.color == color)
+                question_text = f"What shape is the {color} object?"
+                
+                questions.append(Question(
+                    scene_id=scene_id,
+                    question=question_text,
+                    answer=target_obj.shape,
+                    question_type='query_shape_unambiguous',
+                    image_path=scene.image_path,
+                    scene_objects=[asdict(obj) for obj in scene.objects],
+                    template_id=1,
+                    is_held_out_combo=(target_obj.color, target_obj.shape) in self.held_out_combos,
+                ))
         
-        # Exist questions
-        if len(scene.objects) > 0:
-            obj = random.choice(scene.objects)
-            q = random.choice(self.config.TEMPLATES['exist'])
-            if '{color}' in q and '{shape}' in q:
-                question_text = q.format(color=obj.color, shape=obj.shape)
-                answer = 'yes'
-            else:
-                question_text = q.format(color=obj.color)
-                answer = 'yes'
+        # Negation queries: "What color is the object that is NOT {distractor_color}?"
+        # Only generate if there are exactly 2 objects (unambiguous without spatial reasoning)
+        if len(scene.objects) == 2:
+            obj1, obj2 = scene.objects
             
-            questions.append(Question(
-                scene_id=scene_id,
-                question=question_text,
-                answer=answer,
-                question_type='exist',
-                image_path=scene.image_path,
-                scene_objects=[asdict(obj) for obj in scene.objects],
-                template_id=1,
-                is_held_out_combo=(obj.color, obj.shape) in self.held_out_combos,
-            ))
-        
-        # Query color (need at least 2 objects for interesting queries)
-        if len(scene.objects) >= 2:
-            # Find leftmost object
-            leftmost = min(scene.objects, key=lambda o: o.position[0])
-            question_text = f"What color is the {leftmost.shape} on the left?"
-            answer = leftmost.color
+            # Case 1: Ask about obj1, negate obj2's color
+            if obj1.color != obj2.color:  # Only if colors differ
+                question_text = f"What color is the object that is NOT {obj2.color}?"
+                questions.append(Question(
+                    scene_id=scene_id,
+                    question=question_text,
+                    answer=obj1.color,
+                    question_type='query_color_negation',
+                    image_path=scene.image_path,
+                    scene_objects=[asdict(obj) for obj in scene.objects],
+                    template_id=2,
+                    is_held_out_combo=(obj1.color, obj1.shape) in self.held_out_combos,
+                ))
             
-            questions.append(Question(
-                scene_id=scene_id,
-                question=question_text,
-                answer=answer,
-                question_type='query_color',
-                image_path=scene.image_path,
-                scene_objects=[asdict(obj) for obj in scene.objects],
-                template_id=2,
-                is_held_out_combo=(leftmost.color, leftmost.shape) in self.held_out_combos,
-            ))
+            # Case 2: Ask about obj2, negate obj1's color
+            if obj1.color != obj2.color:
+                question_text = f"What color is the object that is NOT {obj1.color}?"
+                questions.append(Question(
+                    scene_id=scene_id,
+                    question=question_text,
+                    answer=obj2.color,
+                    question_type='query_color_negation',
+                    image_path=scene.image_path,
+                    scene_objects=[asdict(obj) for obj in scene.objects],
+                    template_id=2,
+                    is_held_out_combo=(obj2.color, obj2.shape) in self.held_out_combos,
+                ))
         
         return questions
     
@@ -246,7 +303,7 @@ class CLEVRLiteGenerator:
                 self._render_scene(scene, str(img_path))
                 
                 # Generate questions
-                questions = self._generate_questions(scene, scene_id, split)
+                questions = self._generate_questions(scene, scene_id)
                 all_data[split].extend([asdict(q) for q in questions])
         
         # Save metadata
