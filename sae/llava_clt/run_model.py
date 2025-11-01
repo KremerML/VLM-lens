@@ -46,17 +46,26 @@ def load_dataset(data_dir: str, split: str = 'val') -> List[Dict]:
     return questions
 
 
-def format_prompt(question: str, processor) -> str:
-    """Format question as LLaVA chat prompt"""
-    conversation = [
-        {
-            "role": "user",
-            "content": [
-                {"type": "text", "text": question},
-                {"type": "image"},
-            ],
-        },
-    ]
+def format_prompt(question: str, processor, system_prompt: str = None) -> str:
+    """Format question as LLaVA chat prompt with optional system message"""
+    conversation = []
+    
+    # Add system message if provided
+    if system_prompt:
+        conversation.append({
+            "role": "system",
+            "content": [{"type": "text", "text": system_prompt}],
+        })
+    
+    # Add user message with question and image
+    conversation.append({
+        "role": "user",
+        "content": [
+            {"type": "text", "text": question},
+            {"type": "image"},
+        ],
+    })
+    
     prompt = processor.apply_chat_template(conversation, add_generation_prompt=True)
     return prompt
 
@@ -74,27 +83,24 @@ def extract_answer(generated_text: str, question_type: str) -> str:
     text = re.sub(r"\s+", " ", text).strip()
 
     # Allowed vocab from the data generator
-    COLORS = set(CLEVRLiteConfig.COLORS)   # ['red','blue','green','yellow','purple','cyan']
-    SHAPES = set(CLEVRLiteConfig.SHAPES)   # ['cube','sphere','triangle']
+    COLORS = set(CLEVRLiteConfig.COLORS)   # ['red','blue','green','yellow','purple','black']
+    SHAPES = set(CLEVRLiteConfig.SHAPES)   # ['square','circle','triangle']
 
     # A few common natural synonyms the VLM might produce
     synonym_map = {
         # shapes
-        "circle": "sphere",
-        "round": "sphere",
-        "ball": "sphere",
-        "spherical": "sphere",
+        "round": "circle",
+        "ball": "circle",
+        "spherical": "circle",
         "triangular": "triangle",
         "pyramid": "triangle",     # sometimes VLMs say "pyramid" for 2D triangle-like
-        "box": "cube",
-        "cubic": "cube",
-        "block": "cube",
+        "box": "square",
+        "cubic": "square",
+        "block": "square",
 
         # colors
         "violet": "purple",
         "magenta": "purple",       # occasionally appears for saturated purple
-        "turquoise": "cyan",
-        "teal": "cyan",            # close enough for this toy dataset
         "gold": "yellow",
         "golden": "yellow",
         "navy": "blue",
@@ -169,8 +175,9 @@ def run_inference(
         raw_image = Image.open(image_path)
         
         # Format prompt
-        prompt = format_prompt(q_data['question'], processor)
-        
+        # system_prompt = "Only answer with one word - the specific attribute asked about (colors: red, blue, green, yellow, purple, black; shapes: square, circle, triangle)."
+        prompt = format_prompt(q_data['question'], processor) #, system_prompt=system_prompt)
+
         # Prepare inputs
         inputs = processor(
             images=raw_image,

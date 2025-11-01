@@ -191,9 +191,9 @@ class CLEVRLiteGenerator:
             x1, y1, x2, y2 = obj.pixel_box
             color = self.config.COLOR_RGB[obj.color]
             
-            if obj.shape == 'cube':
+            if obj.shape == 'square':
                 draw.rectangle([x1, y1, x2, y2], fill=color, outline=(0, 0, 0), width=2)
-            elif obj.shape == 'sphere':
+            elif obj.shape == 'circle':
                 draw.ellipse([x1, y1, x2, y2], fill=color, outline=(0, 0, 0), width=2)
             elif obj.shape == 'triangle':
                 # Draw as triangle

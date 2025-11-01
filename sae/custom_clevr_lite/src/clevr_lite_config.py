@@ -3,8 +3,8 @@
 class CLEVRLiteConfig:
     """Dataset generation configuration"""
     # Colors and shapes
-    COLORS = ['red', 'blue', 'green', 'yellow', 'purple', 'cyan']
-    SHAPES = ['cube', 'sphere', 'triangle']
+    COLORS = ['red', 'blue', 'green', 'yellow', 'purple', 'black']
+    SHAPES = ['square', 'circle', 'triangle']
     SIZES = ['small', 'large']
     
     # Color RGB values (bright, saturated)
@@ -14,7 +14,7 @@ class CLEVRLiteConfig:
         'green': (50, 205, 50),
         'yellow': (255, 215, 0),
         'purple': (147, 112, 219),
-        'cyan': (0, 206, 209),
+        'black': (0, 0, 0),
     }
     
     # Image settings
