@@ -26,7 +26,7 @@ def load_model(model_id: str = "llava-hf/llava-1.5-7b-hf", device: int = 0):
     print(f"Loading model: {model_id}")
     model = LlavaForConditionalGeneration.from_pretrained(
         model_id,
-        torch_dtype=torch.float16,
+        dtype=torch.float16,
         low_cpu_mem_usage=True,
     ).to(device)
     
@@ -72,20 +72,20 @@ def format_prompt(question: str, processor, system_prompt: str = None) -> str:
 
 def extract_answer(generated_text: str, question_type: str) -> str:
     """
-    Extract the actual answer from the model's generated text by matching against
-    the dataset's closed-set vocabulary, scoped by the question type.
+    Extract the actual answer from the model's generated text using question-type-specific regex patterns.
+    
+    Expected formats:
+    - query_shape_unambiguous: "The {color} object is a {shape}." -> extract {shape}
+    - query_color_unambiguous: "The {shape} is {color}." -> extract {color}
+    - query_color_negation: "The object that is NOT {color_neg} is {color}." -> extract {color}
     """
-
+    
     text = generated_text.strip().lower()
-
-    # Normalize punctuation to spaces and collapse whitespace
-    text = re.sub(r"[^\w\s]", " ", text)
-    text = re.sub(r"\s+", " ", text).strip()
-
+    
     # Allowed vocab from the data generator
     COLORS = set(CLEVRLiteConfig.COLORS)   # ['red','blue','green','yellow','purple','black']
     SHAPES = set(CLEVRLiteConfig.SHAPES)   # ['square','circle','triangle']
-
+    
     # A few common natural synonyms the VLM might produce
     synonym_map = {
         # shapes
@@ -97,7 +97,7 @@ def extract_answer(generated_text: str, question_type: str) -> str:
         "box": "square",
         "cubic": "square",
         "block": "square",
-
+        
         # colors
         "violet": "purple",
         "magenta": "purple",       # occasionally appears for saturated purple
@@ -107,41 +107,55 @@ def extract_answer(generated_text: str, question_type: str) -> str:
         "azure": "blue",
         "lime": "green",
     }
-
-    # Build search target list based on question type
-    if "color" in question_type:
-        target_set = COLORS
-    elif "shape" in question_type:
-        target_set = SHAPES
-    else:
-        # Fallback: consider both if somehow a new template slips in
-        target_set = COLORS.union(SHAPES)
-
-    # Tokenize while preserving order for first-match selection
-    tokens = text.split()
-
-    # First pass: direct match to allowed vocab
-    for tok in tokens:
-        if tok in target_set:
-            return tok
-
-    # Second pass: map synonyms → canonical and match
-    for tok in tokens:
-        mapped = synonym_map.get(tok)
-        if mapped and mapped in target_set:
-            return mapped
-
-    # Third pass: light pattern-based hints like "... is a/an <word>" or "... is <word>"
-    # Then apply the same vocab filtering.
-    m = re.search(r"\bis\b(?:\s+a|n)?\s+(\w+)", text)  # captures the word after "is", "is a", "is an"
-    if m:
-        w = m.group(1)
-        if w in target_set:
-            return w
-        mapped = synonym_map.get(w)
-        if mapped and mapped in target_set:
-            return mapped
-
+    
+    def normalize_answer(word: str) -> str:
+        """Normalize answer using synonym map and validate against vocab."""
+        word = word.lower().strip()
+        
+        # Try direct match first
+        if question_type == "query_shape_unambiguous" and word in SHAPES:
+            return word
+        elif question_type in ["query_color_unambiguous", "query_color_negation"] and word in COLORS:
+            return word
+        
+        # Try synonym mapping
+        mapped = synonym_map.get(word)
+        if mapped:
+            if question_type == "query_shape_unambiguous" and mapped in SHAPES:
+                return mapped
+            elif question_type in ["query_color_unambiguous", "query_color_negation"] and mapped in COLORS:
+                return mapped
+        
+        return ""
+    
+    # Apply question-type-specific regex patterns
+    if question_type == "query_shape_unambiguous":
+        # Pattern: "The {color} object is a {shape}."
+        # We want to extract {shape}
+        match = re.search(r"the\s+\w+\s+object\s+is\s+a(?:n)?\s+(\w+)", text)
+        if match:
+            result = normalize_answer(match.group(1))
+            if result:
+                return result
+    
+    elif question_type == "query_color_unambiguous":
+        # Pattern: "The {shape} is {color}."
+        # We want to extract {color}
+        match = re.search(r"the\s+\w+\s+is\s+(\w+)", text)
+        if match:
+            result = normalize_answer(match.group(1))
+            if result:
+                return result
+    
+    elif question_type == "query_color_negation":
+        # Pattern: "The object that is NOT {color_neg} is {color}."
+        # We want to extract {color} (the final one)
+        match = re.search(r"the\s+object\s+that\s+is\s+not\s+\w+\s+is\s+(\w+)", text)
+        if match:
+            result = normalize_answer(match.group(1))
+            if result:
+                return result
+    
     # If nothing valid found, return empty string to mark as incorrect downstream
     return ""
 

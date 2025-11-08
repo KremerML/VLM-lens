@@ -1,7 +1,7 @@
 {
-  "overall_accuracy": 0.8421052631578947,
+  "overall_accuracy": 0.9197994987468672,
   "total_questions": 399,
-  "correct_predictions": 336,
+  "correct_predictions": 367,
   "by_question_type": {
     "query_color_unambiguous": {
       "accuracy": 0.9444444444444444,
@@ -9,22 +9,22 @@
       "total": 144
     },
     "query_shape_unambiguous": {
-      "accuracy": 0.9707317073170731,
-      "correct": 199,
+      "accuracy": 0.8878048780487805,
+      "correct": 182,
       "total": 205
     },
     "query_color_negation": {
-      "accuracy": 0.02,
-      "correct": 1,
+      "accuracy": 0.98,
+      "correct": 49,
       "total": 50
     }
   },
   "held_out_combo": {
-    "accuracy": 0.8172043010752689,
+    "accuracy": 0.8924731182795699,
     "total": 186
   },
   "seen_combo": {
-    "accuracy": 0.863849765258216,
+    "accuracy": 0.9436619718309859,
     "total": 213
   }
 }
